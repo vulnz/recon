@@ -27,7 +27,7 @@ echo Alive hosts in %SUBNET%.0/24 > %OUTPUT%
 
 for /L %%i in (1,1,254) do (
     ping -n 1 -w 70 %SUBNET%.%%i | find "TTL=" >nul
-    if not errorlevel 1 (
+    if not errorlevel 1 ( 
         echo %SUBNET%.%%i >> %OUTPUT%
         echo Alive: %SUBNET%.%%i
     )
