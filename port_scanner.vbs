@@ -1,9 +1,9 @@
-' Port Scanner VBScript
-' Сканирует топ 100 портов на указанном IP-адресе
+' Enhanced Port Scanner VBScript with Multiple Validation Methods
+' Scans top 100 ports on specified IP address
 
 Option Explicit
 
-' Топ 100 наиболее используемых портов
+' Top 100 most commonly used ports
 Dim ports
 ports = Array(21, 22, 23, 25, 53, 80, 110, 111, 135, 139, _
               143, 443, 445, 993, 995, 1723, 3306, 3389, 5900, 8080, _
@@ -16,128 +16,187 @@ ports = Array(21, 22, 23, 25, 53, 80, 110, 111, 135, 139, _
               9418, 9999, 10000, 11211, 27017, 27018, 27019, 28017, 50000, 50001, _
               1025, 1026, 1027, 1028, 1029, 1030, 1031, 1032, 1033, 1034)
 
-' Получаем IP-адрес от пользователя
+' Get IP address from user
 Dim targetIP
-targetIP = InputBox("Введите IP-адрес для сканирования:", "Port Scanner", "127.0.0.1")
+targetIP = InputBox("Enter IP address to scan:", "Port Scanner", "127.0.0.1")
 
 If targetIP = "" Then
-    MsgBox "Сканирование отменено", vbInformation
+    MsgBox "Scan cancelled", vbInformation
     WScript.Quit
 End If
 
-' Проверяем формат IP
+' Validate IP format
 If Not IsValidIP(targetIP) Then
-    MsgBox "Неверный формат IP-адреса!", vbCritical
+    MsgBox "Invalid IP address format!", vbCritical
     WScript.Quit
 End If
 
-' Создаем файл лога
+' Create log file
 Dim fso, logFile, logPath
 Set fso = CreateObject("Scripting.FileSystemObject")
 logPath = fso.GetParentFolderName(WScript.ScriptFullName) & "\scan_log_" & Replace(Replace(Replace(Now(), ":", "-"), " ", "_"), "/", "-") & ".txt"
 Set logFile = fso.CreateTextFile(logPath, True)
 
-' Записываем заголовок
+' Write header
 logFile.WriteLine "========================================="
 logFile.WriteLine "Port Scanner Log"
-logFile.WriteLine "Целевой IP: " & targetIP
-logFile.WriteLine "Дата сканирования: " & Now()
+logFile.WriteLine "Target IP: " & targetIP
+logFile.WriteLine "Scan Date: " & Now()
+logFile.WriteLine "Validation: Multiple methods (3 checks)"
 logFile.WriteLine "========================================="
 logFile.WriteLine ""
 
-MsgBox "Начинается сканирование " & targetIP & vbCrLf & "Это может занять несколько минут..." & vbCrLf & "Лог будет сохранен в:" & vbCrLf & logPath, vbInformation
+MsgBox "Starting scan of " & targetIP & vbCrLf & "This may take several minutes..." & vbCrLf & "Log will be saved to:" & vbCrLf & logPath, vbInformation
 
-' Переменные для статистики
-Dim openPorts, closedPorts, i
+' Statistics variables
+Dim openPorts, closedPorts, i, scannedCount
 openPorts = 0
 closedPorts = 0
+scannedCount = 0
 
-' Сканируем порты
+' Create progress tracking
+Dim totalPorts
+totalPorts = UBound(ports) + 1
+
+' Scan ports
 For i = 0 To UBound(ports)
-    Dim port, isOpen
+    Dim port, isOpen, checkResults
     port = ports(i)
-    isOpen = CheckPort(targetIP, port)
+    
+    ' Use multiple validation methods
+    isOpen = CheckPortMultipleWays(targetIP, port, checkResults)
+    
+    scannedCount = scannedCount + 1
     
     If isOpen Then
-        logFile.WriteLine "Порт " & port & " - ОТКРЫТ"
+        logFile.WriteLine "Port " & FormatPort(port) & " - OPEN " & checkResults
         openPorts = openPorts + 1
     Else
-        logFile.WriteLine "Порт " & port & " - ЗАКРЫТ"
+        logFile.WriteLine "Port " & FormatPort(port) & " - CLOSED " & checkResults
         closedPorts = closedPorts + 1
+    End If
+    
+    ' Progress indicator every 10 ports
+    If scannedCount Mod 10 = 0 Then
+        WScript.Echo "Progress: " & scannedCount & "/" & totalPorts & " ports scanned..."
     End If
 Next
 
-' Записываем статистику
+' Write statistics
 logFile.WriteLine ""
 logFile.WriteLine "========================================="
-logFile.WriteLine "Результаты сканирования:"
-logFile.WriteLine "Всего портов просканировано: " & (openPorts + closedPorts)
-logFile.WriteLine "Открытых портов: " & openPorts
-logFile.WriteLine "Закрытых портов: " & closedPorts
+logFile.WriteLine "Scan Results:"
+logFile.WriteLine "Total ports scanned: " & (openPorts + closedPorts)
+logFile.WriteLine "Open ports: " & openPorts
+logFile.WriteLine "Closed ports: " & closedPorts
 logFile.WriteLine "========================================="
 
 logFile.Close
 Set logFile = Nothing
 Set fso = Nothing
 
-MsgBox "Сканирование завершено!" & vbCrLf & vbCrLf & _
-       "Открытых портов: " & openPorts & vbCrLf & _
-       "Закрытых портов: " & closedPorts & vbCrLf & vbCrLf & _
-       "Лог сохранен в:" & vbCrLf & logPath, vbInformation
+MsgBox "Scan completed!" & vbCrLf & vbCrLf & _
+       "Open ports: " & openPorts & vbCrLf & _
+       "Closed ports: " & closedPorts & vbCrLf & vbCrLf & _
+       "Log saved to:" & vbCrLf & logPath, vbInformation
 
-' Функция проверки порта
-Function CheckPort(ip, port)
-    On Error Resume Next
+' Function to check port using multiple validation methods
+Function CheckPortMultipleWays(ip, port, ByRef resultDetails)
+    Dim method1, method2, method3, totalSuccess
     
-    Dim socket, connected
-    connected = False
+    ' Method 1: PowerShell Test-NetConnection
+    method1 = CheckPortPowerShell(ip, port)
     
-    ' Создаем объект Winsock
-    Set socket = CreateObject("MSWinsock.Winsock")
+    ' Method 2: PowerShell TcpClient
+    method2 = CheckPortTcpClient(ip, port)
     
-    If Err.Number = 0 Then
-        ' Устанавливаем таймаут
-        socket.Connect ip, port
-        
-        ' Ждем немного
-        WScript.Sleep 500
-        
-        ' Проверяем состояние подключения
-        If socket.State = 7 Then ' sckConnected
-            connected = True
-            socket.Close
-        End If
-    Else
-        ' Если MSWinsock недоступен, используем альтернативный метод
-        Err.Clear
-        connected = CheckPortAlternative(ip, port)
-    End If
+    ' Method 3: PowerShell with Socket
+    method3 = CheckPortSocket(ip, port)
     
-    Set socket = Nothing
-    CheckPort = connected
+    ' Count successful connections
+    totalSuccess = 0
+    If method1 Then totalSuccess = totalSuccess + 1
+    If method2 Then totalSuccess = totalSuccess + 1
+    If method3 Then totalSuccess = totalSuccess + 1
+    
+    ' Build result details string
+    resultDetails = "[M1:" & IIf(method1, "✓", "✗") & " M2:" & IIf(method2, "✓", "✗") & " M3:" & IIf(method3, "✓", "✗") & "]"
+    
+    ' Port is considered open if at least 2 out of 3 methods confirm it
+    CheckPortMultipleWays = (totalSuccess >= 2)
 End Function
 
-' Альтернативный метод проверки порта (через WMI)
-Function CheckPortAlternative(ip, port)
+' Method 1: PowerShell Test-NetConnection (most reliable for modern Windows)
+Function CheckPortPowerShell(ip, port)
     On Error Resume Next
-    
-    Dim shell, result
+    Dim shell, cmd, result
     Set shell = CreateObject("WScript.Shell")
     
-    ' Используем PowerShell для проверки порта
-    Dim cmd
-    cmd = "powershell -Command ""$tcpClient = New-Object System.Net.Sockets.TcpClient; " & _
-          "try { $tcpClient.Connect('" & ip & "', " & port & "); " & _
-          "$tcpClient.Close(); exit 0 } catch { exit 1 }"""
+    ' Use Test-NetConnection with timeout
+    cmd = "powershell -NoProfile -NonInteractive -Command """ & _
+          "$result = Test-NetConnection -ComputerName '" & ip & "' -Port " & port & " -WarningAction SilentlyContinue -InformationLevel Quiet -ErrorAction SilentlyContinue; " & _
+          "if($result) { exit 0 } else { exit 1 }"""
     
     result = shell.Run(cmd, 0, True)
     
     Set shell = Nothing
-    
-    CheckPortAlternative = (result = 0)
+    CheckPortPowerShell = (Err.Number = 0 And result = 0)
 End Function
 
-' Функция проверки формата IP
+' Method 2: PowerShell TcpClient with timeout
+Function CheckPortTcpClient(ip, port)
+    On Error Resume Next
+    Dim shell, cmd, result
+    Set shell = CreateObject("WScript.Shell")
+    
+    cmd = "powershell -NoProfile -NonInteractive -Command """ & _
+          "$tcpClient = New-Object System.Net.Sockets.TcpClient; " & _
+          "$tcpClient.ReceiveTimeout = 1000; " & _
+          "$tcpClient.SendTimeout = 1000; " & _
+          "try { " & _
+          "$tcpClient.Connect('" & ip & "', " & port & "); " & _
+          "Start-Sleep -Milliseconds 100; " & _
+          "if($tcpClient.Connected) { " & _
+          "$tcpClient.Close(); exit 0 } else { exit 1 } " & _
+          "} catch { exit 1 } finally { $tcpClient.Dispose() }"""
+    
+    result = shell.Run(cmd, 0, True)
+    
+    Set shell = Nothing
+    CheckPortTcpClient = (Err.Number = 0 And result = 0)
+End Function
+
+' Method 3: PowerShell Socket connection
+Function CheckPortSocket(ip, port)
+    On Error Resume Next
+    Dim shell, cmd, result
+    Set shell = CreateObject("WScript.Shell")
+    
+    cmd = "powershell -NoProfile -NonInteractive -Command """ & _
+          "$socket = New-Object System.Net.Sockets.Socket([System.Net.Sockets.AddressFamily]::InterNetwork, [System.Net.Sockets.SocketType]::Stream, [System.Net.Sockets.ProtocolType]::Tcp); " & _
+          "$socket.ReceiveTimeout = 1000; " & _
+          "$socket.SendTimeout = 1000; " & _
+          "try { " & _
+          "$endpoint = New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Parse('" & ip & "'), " & port & "); " & _
+          "$result = $socket.BeginConnect($endpoint, $null, $null); " & _
+          "$success = $result.AsyncWaitHandle.WaitOne(1000, $true); " & _
+          "if($success -and $socket.Connected) { " & _
+          "$socket.EndConnect($result); " & _
+          "$socket.Close(); exit 0 } else { exit 1 } " & _
+          "} catch { exit 1 } finally { $socket.Dispose() }"""
+    
+    result = shell.Run(cmd, 0, True)
+    
+    Set shell = Nothing
+    CheckPortSocket = (Err.Number = 0 And result = 0)
+End Function
+
+' Helper function to format port number with padding
+Function FormatPort(port)
+    FormatPort = Right("     " & port, 5)
+End Function
+
+' Function to validate IP format
 Function IsValidIP(ip)
     Dim parts, i, part
     IsValidIP = False
@@ -152,4 +211,13 @@ Function IsValidIP(ip)
     Next
     
     IsValidIP = True
+End Function
+
+' Helper function for IIf replacement (VBScript doesn't have IIf)
+Function IIf(condition, trueValue, falseValue)
+    If condition Then
+        IIf = trueValue
+    Else
+        IIf = falseValue
+    End If
 End Function
