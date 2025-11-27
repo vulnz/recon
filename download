@@ -8,3 +8,6 @@ https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.8.8/
 msiexec /i https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.8.8/npp.8.8.8.Installer.x64.exee /qn
 
 
+winget download Notepad++.Notepad++ --source winget --accept-source-agreements
+
+
