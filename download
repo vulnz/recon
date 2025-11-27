@@ -1,0 +1,10 @@
+certutil -urlcache -split -f https://github.com/notepad-plus-plus-plus/notepad-plus-plus/releases/download/v8.8.8/npp.8.8.8.Installer.exe npp.exe
+
+
+bitsadmin /transfer dljob /priority high ^
+https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.8.8/npp.8.8.8.Installer.exe npp.exe
+
+
+msiexec /i https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.8.8/npp.8.8.8.Installer.exe /qn
+
+
