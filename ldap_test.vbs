@@ -1,9 +1,11 @@
+' Подключается по http://127.0.0.1:9999 и шлёт RAW LDAP BindRequest
+' Затем парсит ответ и вытаскивает все строки, содержащие CN= или DC=
+
 Option Explicit
 
-Const HOST = "127.0.0.1"
-Const PORT = 999
-
-Dim http, bindPacket
+Dim host, port, bindPacket, http, resp, i, matches
+host = "127.0.0.1"
+port = 9999
 
 bindPacket = Chr(&H30) & Chr(&H0C) & _
              Chr(&H02) & Chr(&H01) & Chr(&H01) & _
@@ -13,22 +15,33 @@ bindPacket = Chr(&H30) & Chr(&H0C) & _
              Chr(&H80) & Chr(&H00)
 
 On Error Resume Next
-Set http = CreateObject("WinHttp.WinHttpRequest.5.1")
-If Err.Number <> 0 Then
-    WScript.Echo "[!] Ошибка: WinHttp не доступен."
-    WScript.Quit 1
-End If
-
-WScript.Echo "[*] Подключаюсь к " & HOST & ":" & PORT & "..."
-
-http.Open "POST", "http://" & HOST & ":" & PORT, False
-http.SetRequestHeader "Content-Type", "application/octet-stream"
-
-On Error Resume Next
+Set http = CreateObject("MSXML2.ServerXMLHTTP")
+http.Open "POST", "http://" & host & ":" & port, False
+http.setRequestHeader "Content-Type", "application/octet-stream"
 http.Send bindPacket
 
-If Err.Number <> 0 Then
-    WScript.Echo "[✗] Ошибка при отправке: " & Err.Description
+If http.status <> 200 And http.status <> 0 Then
+    WScript.Echo "[✗] LDAP через прокси не ответил. Статус: " & http.status
+    WScript.Quit
+End If
+
+WScript.Echo "[✓] Получен ответ от LDAP через прокси. Ищу CN= и DC=..."
+
+Dim raw, result
+raw = http.responseText
+result = ""
+
+For i = 1 To Len(raw) - 4
+    If Mid(raw, i, 3) = "CN=" Then
+        result = result & Mid(raw, i, 30) & vbCrLf
+    End If
+    If Mid(raw, i, 3) = "DC=" Then
+        result = result & Mid(raw, i, 30) & vbCrLf
+    End If
+Next
+
+If result = "" Then
+    WScript.Echo "[!] CN=/DC= не найдены в ответе."
 Else
-    WScript.Echo "[✓] Отправлено. Код ответа: " & http.Status
+    WScript.Echo result
 End If
