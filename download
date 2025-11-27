@@ -11,3 +11,6 @@ msiexec /i https://github.com/notepad-plus-plus/notepad-plus-plus/releases/downl
 winget download Notepad++.Notepad++ --source winget --accept-source-agreements
 
 
+winget install Notepad++.Notepad++ --accept-package-agreements --accept-source-agreements
+
+
