@@ -1,12 +1,11 @@
-' Подключается по http://127.0.0.1:9999 и шлёт RAW LDAP BindRequest
-' Затем парсит ответ и вытаскивает все строки, содержащие CN= или DC=
-
 Option Explicit
 
-Dim host, port, bindPacket, http, resp, i, matches
-host = "127.0.0.1"
-port = 9999
+Const HOST = "127.0.0.1"
+Const PORT = 999
 
+Dim http, bindPacket, searchPacket, BASE_DN, searchLen
+
+' Anonymous BIND packet
 bindPacket = Chr(&H30) & Chr(&H0C) & _
              Chr(&H02) & Chr(&H01) & Chr(&H01) & _
              Chr(&H60) & Chr(&H07) & _
@@ -14,34 +13,74 @@ bindPacket = Chr(&H30) & Chr(&H0C) & _
              Chr(&H04) & Chr(&H00) & _
              Chr(&H80) & Chr(&H00)
 
-On Error Resume Next
-Set http = CreateObject("MSXML2.ServerXMLHTTP")
-http.Open "POST", "http://" & host & ":" & port, False
-http.setRequestHeader "Content-Type", "application/octet-stream"
-http.Send bindPacket
+' Sample base DN (replace as needed, but can stay as placeholder)
+BASE_DN = "DC=corp,DC=local"
 
-If http.status <> 200 And http.status <> 0 Then
-    WScript.Echo "[✗] LDAP через прокси не ответил. Статус: " & http.status
-    WScript.Quit
+' Build raw SearchRequest packet for (objectClass=*) under BASE_DN
+searchLen = Len(BASE_DN)
+searchPacket = Chr(&H30) & Chr(&H3F) & _
+               Chr(&H02) & Chr(&H01) & Chr(&H02) & _
+               Chr(&H63) & Chr(&H3A) & _
+               Chr(&H04) & Chr(searchLen) & BASE_DN & _
+               Chr(&H0A) & Chr(&H01) & Chr(&H02) & _
+               Chr(&H0A) & Chr(&H01) & Chr(&H00) & _
+               Chr(&H02) & Chr(&H01) & Chr(&H00) & _
+               Chr(&H02) & Chr(&H01) & Chr(&H00) & _
+               Chr(&H01) & Chr(&H01) & Chr(&H00) & _
+               Chr(&H87) & Chr(&H0F) & "(objectClass=user)" & _
+               Chr(&H30) & Chr(&H00)
+
+Set http = CreateObject("WinHttp.WinHttpRequest.5.1")
+
+WScript.Echo "[*] Connecting to " & HOST & ":" & PORT
+http.Open "POST", "http://" & HOST & ":" & PORT, False
+http.SetRequestHeader "Content-Type", "application/octet-stream"
+
+' Send Bind request
+http.Send bindPacket
+WScript.Sleep 300
+If http.Status = 200 Or http.Status = 0 Then
+    WScript.Echo "[+] Bind likely accepted."
+Else
+    WScript.Echo "[!] Bind failed: HTTP " & http.Status
+    WScript.Quit(1)
 End If
 
-WScript.Echo "[✓] Получен ответ от LDAP через прокси. Ищу CN= и DC=..."
+' Send SearchRequest
+WScript.Echo "[*] Sending LDAP SearchRequest for users..."
+http.Open "POST", "http://" & HOST & ":" & PORT, False
+http.SetRequestHeader "Content-Type", "application/octet-stream"
+http.Send searchPacket
+WScript.Sleep 500
 
-Dim raw, result
-raw = http.responseText
-result = ""
+Dim raw, line, i, found, lines
+raw = http.ResponseBody
 
-For i = 1 To Len(raw) - 4
-    If Mid(raw, i, 3) = "CN=" Then
-        result = result & Mid(raw, i, 30) & vbCrLf
-    End If
-    If Mid(raw, i, 3) = "DC=" Then
-        result = result & Mid(raw, i, 30) & vbCrLf
+If LenB(raw) = 0 Then
+    WScript.Echo "[!] No response to SearchRequest."
+    WScript.Quit(1)
+End If
+
+' Try to extract any CN= or DC= strings
+Dim str, b, ch
+str = ""
+For i = 1 To LenB(raw)
+    b = AscB(MidB(raw, i, 1))
+    ch = Chr(b)
+    If b >= 32 And b < 127 Then
+        str = str & ch
+    Else
+        str = str & " "
     End If
 Next
 
-If result = "" Then
-    WScript.Echo "[!] CN=/DC= не найдены в ответе."
-Else
-    WScript.Echo result
-End If
+WScript.Echo "[✓] Raw LDAP response string:"
+lines = Split(str, " ")
+found = 0
+For Each line In lines
+    If InStr(line, "CN=") > 0 Or InStr(line, "DC=") > 0 Then
+        WScript.Echo "  → " & line
+        found = found + 1
+        If found >= 10 Then Exit For
+    End If
+Next
